@@ -7,3 +7,7 @@ A web app for Hotel Geo (Bangalore) staff to photograph vouchers. The app reads 
 - **Stages:** A) photo capture, auto-categorisation and dashboard; B) WhatsApp approvals; C) Tally and hotel-software sync
 
 > This repo is public. Never commit API keys or `.env` files.
+
+## Development
+
+See [CLAUDE.md](CLAUDE.md) for run, test and deploy commands, and how the database is set up.
