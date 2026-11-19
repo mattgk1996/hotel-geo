@@ -5,9 +5,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/form";
 import { isValidGstin } from "@/lib/gstin";
 import { cleanText, validateVoucherFields, type VoucherInput } from "@/lib/voucher-fields";
-import { parseAmount } from "@/lib/vouchers";
+import { headRequired, isVoucherType, parseAmount } from "@/lib/vouchers";
 
-export type ReviewInput = Omit<VoucherInput, "departmentId" | "staffNote"> & {
+export type ReviewInput = Omit<VoucherInput, "departmentId" | "staffNote" | "suspenseId"> & {
   id: string;
   vendorGstin: string;
   taxableValue: string;
@@ -34,7 +34,7 @@ export async function reviewVoucher(input: ReviewInput, decision: Decision): Pro
 
   const { data: v } = await supabase
     .from("vouchers")
-    .select("id, status, head_id, department_id")
+    .select("id, type, status, head_id, department_id, suspense_id")
     .eq("id", input.id)
     .maybeSingle();
   if (!v) return { ok: false, message: "Voucher not found." };
@@ -53,12 +53,17 @@ export async function reviewVoucher(input: ReviewInput, decision: Decision): Pro
   if (decision === "query" && !note) return { ok: false, message: "Write what you need from the staff member." };
   if (decision === "reject" && !note) return { ok: false, message: "Write the reason for rejecting." };
 
-  const checked = await validateVoucherFields(supabase, input, v.department_id);
+  if (v.suspense_id && input.type !== "purchase_bill") {
+    return { ok: false, message: "A voucher settling a suspense voucher must stay a purchase voucher." };
+  }
+  const checked = await validateVoucherFields(supabase, input, v.department_id, { settlesSuspense: !!v.suspense_id });
   if (!checked.ok) return checked;
   if (decision === "approve" && !(Number(checked.fields.total_amount) > 0)) {
     return { ok: false, message: "Amount must be more than zero to approve." };
   }
-  if (decision === "approve" && !checked.fields.head_id) return { ok: false, message: "Pick a head to approve." };
+  if (decision === "approve" && !checked.fields.head_id && isVoucherType(input.type) && headRequired(input.type)) {
+    return { ok: false, message: "Pick a head to approve." };
+  }
 
   const gstin = cleanText(input.vendorGstin, 15)?.toUpperCase() ?? null;
   if (gstin && !isValidGstin(gstin)) return { ok: false, message: "That GSTIN doesn't look right (check the digits)." };
@@ -72,10 +77,10 @@ export async function reviewVoucher(input: ReviewInput, decision: Decision): Pro
     return { ok: false, message: "Tax amounts must be numbers like 450 or 450.50." };
   }
 
-  // Link to a known vendor when the name (or GSTIN) matches one.
+  // Vendor picked from the master list; otherwise link one whose GSTIN or exact name matches.
+  let vendorId = (checked.fields.vendor_id as string | null | undefined) ?? null;
   const vendorName = (checked.fields.vendor_name_raw as string | null) ?? "";
-  let vendorId: string | null = null;
-  if (vendorName || gstin) {
+  if (!vendorId && (vendorName || gstin)) {
     const { data: vendors } = await supabase.from("vendors").select("id, name, gstin").eq("active", true);
     const match = (vendors ?? []).find(
       (x) => (gstin && x.gstin === gstin) || (vendorName && x.name.toLowerCase() === vendorName.toLowerCase()),

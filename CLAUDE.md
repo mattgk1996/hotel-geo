@@ -90,6 +90,18 @@ Before committing: `npm run lint && npm run typecheck && npm test && npm run bui
 - Masters live under `/admin` (staff, departments, heads, floats); vendors at `/vendors` (accounts+admin).
 - Shared form bits: `components/action-form.tsx` (useActionState wrapper), `lib/form.ts`, `lib/ui.ts`.
 
+## Voucher types (owner update, Nov 2026)
+- New vouchers: **Sales voucher** or **Expense voucher → Purchase voucher (`purchase_bill`) / Suspense
+  voucher (`suspense_voucher`)** — `CAPTURE_TYPES` in `lib/vouchers.ts`. Other enum values are legacy only.
+- Purchase vouchers pick the vendor from the vendor master (or "Not in list" free text); the vendor's
+  default head pre-fills the head.
+- Suspense vouchers need no photo or head. They're settled by purchase vouchers with `suspense_id`
+  pointing back (`/vouchers/new?suspense=<id>`, `lib/suspense.ts`, `components/suspense-panel.tsx`).
+  Only the suspense voucher touches a cash float; settling purchases never do (migration 8).
+- Dashboard spend = approved purchase (+ legacy petty cash); unsettled suspense shows separately.
+- Excel export: `GET /api/export?from&to` (admin, exceljs) — Vouchers, Collections, Float top-ups sheets.
+- Supabase caps responses at 1000 rows: use `fetchAll` (`lib/supabase/fetch-all.ts`) for bulk reads.
+
 ## Conventions
 - Times are IST (`APP_TIMEZONE=Asia/Kolkata`); store `timestamptz`, compute dates in IST.
 - Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PIN_PEPPER` and `GEMINI_API_KEY` are server-only — never prefix with

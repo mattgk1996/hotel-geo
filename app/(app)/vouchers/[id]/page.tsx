@@ -8,6 +8,7 @@ import { PAYMENT_MODE_LABELS, VOUCHER_TYPE_LABELS, type PaymentMode, type Vouche
 import { VoucherForm } from "@/components/voucher-form";
 import { StatusChip } from "@/components/voucher-list";
 import { VoucherHistory } from "@/components/voucher-history";
+import { SettlesLink, SuspensePanel } from "@/components/suspense-panel";
 import { signedPhotoUrls } from "@/lib/voucher-photos";
 
 type Voucher = {
@@ -28,6 +29,8 @@ type Voucher = {
   cheque_bank: string | null;
   upi_reference: string | null;
   float_id: string | null;
+  vendor_id: string | null;
+  suspense_id: string | null;
   staff_note: string | null;
   accounts_note: string | null;
   expense_heads: { name: string } | null;
@@ -68,6 +71,9 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
         <p className="text-sm text-zinc-500">{VOUCHER_TYPE_LABELS[v.type]} · {v.departments?.name}</p>
       </div>
 
+      {v.suspense_id && <SettlesLink suspenseId={v.suspense_id} admin={staff.role === "admin"} />}
+      {v.type === "suspense_voucher" && <SuspensePanel voucherId={v.id} staff={staff} />}
+
       {v.accounts_note && (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           <span className="font-semibold">Accounts: </span>{v.accounts_note}
@@ -87,6 +93,8 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
             amount: Number(v.total_amount) ? String(Number(v.total_amount)) : "",
             headId: v.head_id ?? "",
             vendorName: v.vendor_name_raw ?? "",
+            vendorId: v.vendor_id ?? "",
+            suspenseId: v.suspense_id ?? undefined,
             invoiceNumber: v.invoice_number ?? "",
             paymentMode: v.payment_mode ?? "",
             chequeNumber: v.cheque_number ?? "",

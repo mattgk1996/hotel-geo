@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { requireStaff, type CurrentStaff } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { MAX_PAGES, isVoucherType, photoRequired } from "@/lib/vouchers";
+import { MAX_PAGES, headRequired, isCaptureType, isVoucherType, photoRequired } from "@/lib/vouchers";
 import { cleanText, validateVoucherFields, type VoucherInput } from "@/lib/voucher-fields";
 
 export type { VoucherInput };
@@ -21,11 +21,11 @@ async function editableVoucher(supabase: Supabase, staff: CurrentStaff, id: stri
   if (!UUID.test(id)) return null;
   const { data } = await supabase
     .from("vouchers")
-    .select("id, type, status, created_by, department_id")
+    .select("id, type, status, created_by, department_id, suspense_id")
     .eq("id", id)
     .maybeSingle();
   if (!data || data.created_by !== staff.id || !["draft", "queried"].includes(data.status)) return null;
-  return data as { id: string; type: string; status: string; created_by: string; department_id: string };
+  return data as { id: string; type: string; status: string; created_by: string; department_id: string; suspense_id: string | null };
 }
 
 /** Creates the voucher as a draft, or updates the caller's draft/queried voucher. Never changes status. */
@@ -33,29 +33,68 @@ export async function saveVoucher(input: VoucherInput): Promise<ActionResult> {
   const staff = await requireStaff();
   const supabase = await createSupabaseServerClient();
 
-  // Staff always file under their own department; accounts/admin may pick one.
-  const departmentId = staff.role === "staff" ? staff.departmentId : input.departmentId || staff.departmentId;
-  if (!departmentId) return { ok: false, message: "Your account has no department. Ask the admin to set one." };
-
-  const checked = await validateVoucherFields(supabase, input, departmentId);
-  if (!checked.ok) return checked;
-  const fields = { ...checked.fields, staff_note: cleanText(input.staffNote, 1000) };
-
   if (input.id) {
     const existing = await editableVoucher(supabase, staff, input.id);
     if (!existing) return { ok: false, message: "This voucher can no longer be edited." };
-    const { error } = await supabase.from("vouchers").update(fields).eq("id", existing.id);
+    if (input.type !== existing.type && !isCaptureType(input.type)) return { ok: false, message: "Pick a voucher type." };
+    if (existing.suspense_id && input.type !== "purchase_bill") {
+      return { ok: false, message: "A voucher settling a suspense voucher must stay a purchase voucher." };
+    }
+    const checked = await validateVoucherFields(supabase, input, existing.department_id, { settlesSuspense: !!existing.suspense_id });
+    if (!checked.ok) return checked;
+    const { error } = await supabase
+      .from("vouchers")
+      .update({ ...checked.fields, staff_note: cleanText(input.staffNote, 1000) })
+      .eq("id", existing.id);
     if (error) return { ok: false, message: `Couldn't save: ${error.message}` };
     return { ok: true, id: existing.id };
   }
 
+  if (!isCaptureType(input.type)) return { ok: false, message: "Pick a voucher type." };
+
+  // Settling a suspense voucher: the purchase goes to the suspense voucher's department.
+  let suspense: { id: string; department_id: string } | null = null;
+  if (input.suspenseId) {
+    if (input.type !== "purchase_bill") return { ok: false, message: "A suspense voucher is settled with purchase vouchers." };
+    suspense = await settleableSuspense(supabase, staff, input.suspenseId);
+    if (!suspense) return { ok: false, message: "That suspense voucher can't be settled (it must be submitted or approved)." };
+  }
+
+  // Staff always file under their own department; accounts/admin may pick one.
+  const departmentId = suspense?.department_id
+    ?? (staff.role === "staff" ? staff.departmentId : input.departmentId || staff.departmentId);
+  if (!departmentId) return { ok: false, message: "Your account has no department. Ask the admin to set one." };
+
+  const checked = await validateVoucherFields(supabase, input, departmentId, { settlesSuspense: !!suspense });
+  if (!checked.ok) return checked;
+
   const { data, error } = await supabase
     .from("vouchers")
-    .insert({ ...fields, status: "draft", department_id: departmentId, created_by: staff.id })
+    .insert({
+      ...checked.fields,
+      staff_note: cleanText(input.staffNote, 1000),
+      suspense_id: suspense?.id ?? null,
+      status: "draft",
+      department_id: departmentId,
+      created_by: staff.id,
+    })
     .select("id")
     .single();
   if (error || !data) return { ok: false, message: `Couldn't save: ${error?.message ?? "unknown error"}` };
   return { ok: true, id: data.id };
+}
+
+/** A suspense voucher the caller may settle: their own (or any, for admin), submitted or approved. */
+async function settleableSuspense(supabase: Supabase, staff: CurrentStaff, id: string) {
+  if (!UUID.test(id)) return null;
+  const { data } = await supabase
+    .from("vouchers")
+    .select("id, type, status, created_by, department_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data || data.type !== "suspense_voucher" || !["submitted", "approved"].includes(data.status)) return null;
+  if (data.created_by !== staff.id && staff.role !== "admin") return null;
+  return { id: data.id as string, department_id: data.department_id as string };
 }
 
 /** Uploads one compressed photo (FormData: voucherId, pageNo, file, width, height). */
@@ -123,7 +162,9 @@ export async function submitVoucher(id: string): Promise<ActionResult> {
     return { ok: false, message: "Add at least one photo before submitting." };
   }
   if (!(Number(v.total_amount) > 0)) return { ok: false, message: "Enter the amount before submitting." };
-  if (!v.head_id) return { ok: false, message: "Pick an expense head before submitting." };
+  if (!v.head_id && isVoucherType(v.type) && headRequired(v.type)) {
+    return { ok: false, message: "Pick an expense head before submitting." };
+  }
 
   const { error } = await supabase.from("vouchers").update({ status: "submitted" }).eq("id", voucher.id);
   if (error) return { ok: false, message: `Couldn't submit: ${error.message}` };

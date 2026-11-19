@@ -1,7 +1,8 @@
 /** Pure helpers for the owner dashboard (spec §9). Dates are IST calendar days as YYYY-MM-DD. */
 
-/** Voucher types that count as spend. Vendor payments settle purchase bills (counted once, as the
- *  bill) and staff advances are receivables, so neither is spend. */
+/** Voucher types that count as spend: purchase vouchers (including those settling a suspense
+ *  voucher) and legacy petty cash. Suspense vouchers are cash out with bills to follow, shown as
+ *  "suspense outstanding" instead, so nothing is counted twice. */
 export const SPEND_TYPES = ["petty_cash_expense", "purchase_bill"] as const;
 
 export const RANGES = ["today", "yesterday", "week", "month", "custom"] as const;

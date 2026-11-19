@@ -8,18 +8,31 @@ export const VOUCHER_TYPES = [
   "cash_receipt",
   "sales_voucher",
   "collection",
+  "suspense_voucher",
 ] as const;
 export type VoucherType = (typeof VOUCHER_TYPES)[number];
 
 export const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
   petty_cash_expense: "Petty cash expense",
-  purchase_bill: "Purchase bill",
+  purchase_bill: "Purchase voucher",
   vendor_payment: "Vendor payment",
   staff_advance: "Staff advance",
   cash_receipt: "Cash receipt",
   sales_voucher: "Sales voucher",
   collection: "Collection",
+  suspense_voucher: "Suspense voucher",
 };
+
+/**
+ * Types offered when creating a voucher: Sales, or Expense → Purchase / Suspense.
+ * The other types remain only for vouchers created before this change.
+ */
+export const CAPTURE_TYPES = ["purchase_bill", "suspense_voucher", "sales_voucher"] as const;
+export const EXPENSE_TYPES = ["purchase_bill", "suspense_voucher"] as const;
+
+export function isCaptureType(v: unknown): boolean {
+  return typeof v === "string" && (CAPTURE_TYPES as readonly string[]).includes(v);
+}
 
 export const PAYMENT_MODES = ["cash", "upi", "cheque", "bank_transfer", "card", "vendor_credit"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
@@ -57,9 +70,19 @@ export function headDirectionFor(type: VoucherType): "in" | "out" {
   return type === "cash_receipt" || type === "sales_voucher" || type === "collection" ? "in" : "out";
 }
 
-/** Every type needs a photo except daily collections (spec §3). */
+/** Every type needs a photo except suspense vouchers (bills come later) and collections. */
 export function photoRequired(type: VoucherType): boolean {
-  return type !== "collection";
+  return type !== "collection" && type !== "suspense_voucher";
+}
+
+/** A suspense voucher has no head yet: its purchase vouchers carry the real heads. */
+export function headRequired(type: VoucherType): boolean {
+  return type !== "suspense_voucher";
+}
+
+/** Money-out types that can be paid from a cash float. */
+export function usesFloat(type: VoucherType): boolean {
+  return type === "purchase_bill" || type === "suspense_voucher" || type === "petty_cash_expense";
 }
 
 /** Parses a rupee amount typed by staff ("1,250.5" → 1250.5). Null if not a valid amount. */

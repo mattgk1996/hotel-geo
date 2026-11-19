@@ -4,14 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormMessage } from "@/components/pin-input";
 import { compressImage } from "@/lib/compress-image";
+import { formatINR } from "@/lib/money";
 import {
   MAX_PAGES,
   PAYMENT_MODES,
   PAYMENT_MODE_LABELS,
-  VOUCHER_TYPES,
+  EXPENSE_TYPES,
   VOUCHER_TYPE_LABELS,
   headDirectionFor,
+  headRequired,
   photoRequired,
+  usesFloat,
   type VoucherType,
 } from "@/lib/vouchers";
 import { saveVoucher, submitVoucher, uploadVoucherPage } from "@/app/(app)/vouchers/actions";
@@ -20,6 +23,9 @@ import type { VoucherInput } from "@/lib/voucher-fields";
 export type HeadOption = { id: string; code: string; name: string; group_name: string; direction: "in" | "out" };
 export type FloatOption = { id: string; name: string; department_id: string };
 export type DeptOption = { id: string; name: string };
+export type VendorOption = { id: string; name: string; default_head_id: string | null };
+/** The suspense voucher a new purchase voucher settles. */
+export type SuspenseContext = { id: string; voucherNo: string; amount: number; settled: number };
 export type Fields = Omit<VoucherInput, "id">;
 
 type NewPage = { key: string; blob: Blob; width: number; height: number; url: string };
@@ -34,6 +40,8 @@ export function VoucherForm({
   heads,
   floats,
   departments,
+  vendors,
+  suspense,
   queried = false,
 }: {
   voucherId?: string;
@@ -43,6 +51,8 @@ export function VoucherForm({
   floats: FloatOption[];
   /** Shown only to accounts/admin, who may file for any department. */
   departments?: DeptOption[];
+  vendors: VendorOption[];
+  suspense?: SuspenseContext;
   queried?: boolean;
 }) {
   const router = useRouter();
@@ -52,6 +62,8 @@ export function VoucherForm({
   const [uploadedCount, setUploadedCount] = useState(0); // new pages already uploaded (after a partial failure)
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // "Not in list": vendor typed by hand instead of picked from the master.
+  const [otherVendor, setOtherVendor] = useState(!initial.vendorId && !!initial.vendorName);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const retakeIndex = useRef<number | null>(null);
@@ -72,11 +84,38 @@ export function VoucherForm({
   const totalPages = existingPhotos.length + pages.length;
   const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
+  const linked = !!suspense || !!initial.suspenseId;
+  const pickVendor = type !== "suspense_voucher" && direction === "out";
+
   function changeType(next: VoucherType) {
     setF((s) => {
-      const keepHead = heads.find((h) => h.id === s.headId)?.direction === headDirectionFor(next);
-      return { ...s, type: next, headId: keepHead ? s.headId : "" };
+      const keepHead = headRequired(next) && heads.find((h) => h.id === s.headId)?.direction === headDirectionFor(next);
+      const keepVendor = next !== "suspense_voucher" && headDirectionFor(next) === "out";
+      return {
+        ...s,
+        type: next,
+        headId: keepHead ? s.headId : "",
+        vendorId: keepVendor ? s.vendorId : "",
+        floatId: usesFloat(next) ? s.floatId : "",
+      };
     });
+  }
+
+  function chooseVendor(value: string) {
+    if (value === "__other") {
+      setOtherVendor(true);
+      setF((s) => ({ ...s, vendorId: "", vendorName: "" }));
+      return;
+    }
+    setOtherVendor(false);
+    const v = vendors.find((x) => x.id === value);
+    setF((s) => ({
+      ...s,
+      vendorId: v?.id ?? "",
+      vendorName: v?.name ?? "",
+      // Use the vendor's usual head when none is picked yet.
+      headId: s.headId || (v?.default_head_id && heads.some((h) => h.id === v.default_head_id) ? v.default_head_id : ""),
+    }));
   }
 
   async function addFiles(files: FileList | null) {
@@ -156,26 +195,41 @@ export function VoucherForm({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Type */}
-      <fieldset>
-        <legend className={label}>Type</legend>
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          {VOUCHER_TYPES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => changeType(t)}
-              className={`rounded-xl border px-3 py-2.5 text-left text-sm ${
-                t === type
-                  ? "border-emerald-700 bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
-                  : "border-zinc-300 dark:border-zinc-700"
-              } disabled:opacity-50`}
-            >
-              {VOUCHER_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      {/* Type: Expense (Purchase / Suspense) or Sales */}
+      {suspense && (
+        <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900 dark:bg-sky-950 dark:text-sky-200">
+          Settling suspense voucher <span className="font-semibold">{suspense.voucherNo}</span> ·{" "}
+          {formatINR(suspense.amount)} given, {formatINR(suspense.settled)} already settled,{" "}
+          <span className="font-semibold">{formatINR(suspense.amount - suspense.settled)}</span> left.
+        </p>
+      )}
+      {!linked && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className={label}>Voucher</legend>
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            {(["expense", "sales"] as const).map((c) => {
+              const active = c === "sales" ? type === "sales_voucher" : type !== "sales_voucher";
+              return (
+                <button key={c} type="button" onClick={() => changeType(c === "sales" ? "sales_voucher" : "purchase_bill")} className={chip(active, "h-12 font-semibold")}>
+                  {c === "sales" ? "Sales voucher" : "Expense voucher"}
+                </button>
+              );
+            })}
+          </div>
+          {type !== "sales_voucher" && (
+            <div className="grid grid-cols-2 gap-2">
+              {EXPENSE_TYPES.map((t) => (
+                <button key={t} type="button" onClick={() => changeType(t)} className={chip(t === type, "text-sm")}>
+                  {VOUCHER_TYPE_LABELS[t]}
+                  <span className="block text-xs font-normal text-zinc-500">
+                    {t === "purchase_bill" ? "Bill from a vendor" : "Cash given out; bills come later"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </fieldset>
+      )}
 
       {/* Photos */}
       <section>
@@ -241,7 +295,7 @@ export function VoucherForm({
           <span className={label}>Date</span>
           <input type="date" value={f.voucherDate} onChange={set("voucherDate")} className={field} />
         </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        {headRequired(type) && <label className="flex flex-col gap-1 sm:col-span-2">
           <span className={label}>{direction === "in" ? "Income head" : "Expense head"}</span>
           <select value={f.headId} onChange={set("headId")} className={field}>
             <option value="">— Pick a head —</option>
@@ -253,11 +307,25 @@ export function VoucherForm({
               </optgroup>
             ))}
           </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={label}>{direction === "in" ? "Received from" : "Vendor / paid to"}</span>
-          <input value={f.vendorName} onChange={set("vendorName")} className={field} />
-        </label>
+        </label>}
+        {pickVendor ? (
+          <label className="flex flex-col gap-1">
+            <span className={label}>Vendor</span>
+            <select value={otherVendor ? "__other" : f.vendorId} onChange={(e) => chooseVendor(e.target.value)} className={field}>
+              <option value="">— Pick a vendor —</option>
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              <option value="__other">Not in list…</option>
+            </select>
+            {otherVendor && (
+              <input value={f.vendorName} onChange={set("vendorName")} placeholder="Vendor name" className={`${field} mt-1`} />
+            )}
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className={label}>{direction === "in" ? "Received from (optional)" : "Paid to"}</span>
+            <input value={f.vendorName} onChange={set("vendorName")} className={field} />
+          </label>
+        )}
         {(type === "purchase_bill" || type === "vendor_payment") && (
           <label className="flex flex-col gap-1">
             <span className={label}>Invoice / bill number</span>
@@ -295,7 +363,7 @@ export function VoucherForm({
             </label>
           </>
         )}
-        {departments && departments.length > 0 && (
+        {departments && departments.length > 0 && !linked && (
           <label className="flex flex-col gap-1">
             <span className={label}>Department</span>
             <select value={f.departmentId} onChange={set("departmentId")} disabled={!!id} className={field}>
@@ -305,7 +373,7 @@ export function VoucherForm({
             </select>
           </label>
         )}
-        {type === "petty_cash_expense" && fittingFloats.length > 0 && (
+        {usesFloat(type) && !linked && fittingFloats.length > 0 && (
           <label className="flex flex-col gap-1">
             <span className={label}>Paid from float</span>
             <select value={f.floatId} onChange={set("floatId")} className={field}>
@@ -342,4 +410,12 @@ export function VoucherForm({
       </div>
     </div>
   );
+}
+
+function chip(active: boolean, extra = "") {
+  return `rounded-xl border px-3 py-2.5 text-left ${extra} ${
+    active
+      ? "border-emerald-700 bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
+      : "border-zinc-300 dark:border-zinc-700"
+  }`;
 }

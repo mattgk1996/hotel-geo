@@ -9,6 +9,7 @@ import { PAYMENT_MODE_LABELS, istToday, type PaymentMode } from "@/lib/vouchers"
 import { cardClass, fieldClass } from "@/lib/ui";
 import { BarList, TrendChart } from "@/components/charts";
 import { LiveRefresh } from "@/components/live-refresh";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { VOUCHER_ROW_COLUMNS, VoucherList, type VoucherRow } from "@/components/voucher-list";
 
 type Spend = {
@@ -36,13 +37,17 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const supabase = await createSupabaseServerClient();
   const { data: misc } = await supabase.from("expense_heads").select("id").eq("code", "MISC").maybeSingle();
 
-  const [spendQ, collQ, pendingQ, floatsQ, flaggedQ, miscQ, recentQ] = await Promise.all([
-    supabase.from("vouchers")
+  const [spendAll, collAll, suspenseRows, pendingQ, floatsQ, flaggedQ, miscQ, recentQ] = await Promise.all([
+    fetchAll<Spend>((a, b) => supabase.from("vouchers")
       .select("voucher_date, total_amount, payment_mode, vendor_name_raw, vendors(name), expense_heads(name), departments(name)")
       .eq("status", "approved").in("type", SPEND_TYPES).gte("voucher_date", fetchFrom).lte("voucher_date", fetchTo)
-      .limit(20000).overrideTypes<Spend[], { merge: false }>(),
-    supabase.from("collections").select("date, cash, card, upi, other, departments(name)")
-      .gte("date", fetchFrom).lte("date", fetchTo).limit(5000).overrideTypes<Coll[], { merge: false }>(),
+      .order("id").range(a, b).overrideTypes<Spend[], { merge: false }>()),
+    fetchAll<Coll>((a, b) => supabase.from("collections").select("date, cash, card, upi, other, departments(name)")
+      .gte("date", fetchFrom).lte("date", fetchTo).order("id").range(a, b).overrideTypes<Coll[], { merge: false }>()),
+    // Approved suspense vouchers and the approved purchases settling them (all time).
+    fetchAll<{ id: string; type: string; total_amount: string; suspense_id: string | null }>((a, b) => supabase.from("vouchers")
+      .select("id, type, total_amount, suspense_id").eq("status", "approved")
+      .or("type.eq.suspense_voucher,suspense_id.not.is.null").order("id").range(a, b)),
     supabase.from("vouchers").select("created_at, total_amount, voucher_date, type").eq("status", "submitted")
       .order("created_at", { ascending: true }).limit(5000),
     supabase.from("cash_floats").select("id, name, current_balance, low_balance_threshold").eq("active", true).order("name"),
@@ -58,8 +63,9 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       .order("created_at", { ascending: false }).limit(20).overrideTypes<VoucherRow[], { merge: false }>(),
   ]);
 
-  const spendAll = spendQ.data ?? [];
-  const collAll = collQ.data ?? [];
+  const suspenseGiven = sum(suspenseRows.filter((r) => r.type === "suspense_voucher"), (r) => n(r.total_amount));
+  const suspenseSettled = sum(suspenseRows.filter((r) => r.suspense_id), (r) => n(r.total_amount));
+  const suspenseOpen = suspenseRows.filter((r) => r.type === "suspense_voucher").length;
   const inRange = <T,>(rows: T[], d: (r: T) => string, from: string, to: string) => rows.filter((r) => d(r) >= from && d(r) <= to);
 
   const spendRange = inRange(spendAll, (r) => r.voucher_date, range.from, range.to);
@@ -83,7 +89,12 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <LiveRefresh tables={["vouchers", "collections", "cash_floats"]} />
+        <div className="flex items-center gap-3">
+          <LiveRefresh tables={["vouchers", "collections", "cash_floats"]} />
+          <a href={`/api/export?from=${range.from}&to=${range.to}`} className="rounded-xl border border-zinc-300 px-3 py-1.5 text-sm font-medium dark:border-zinc-700">
+            ⬇ Export to Excel
+          </a>
+        </div>
       </div>
 
       {/* Range filter */}
@@ -100,7 +111,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       </form>
 
       {/* Top tiles */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Tile label="Spend today" value={formatINR(spendToday)} />
         <Tile label="Spend this month" value={formatINR(mtd)}
           sub={vsLast === null ? "No spend same days last month" : `${vsLast >= 0 ? "▲" : "▼"} ${Math.abs(vsLast)}% vs same days last month`} />
@@ -110,6 +121,8 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
           <Tile label="Pending review" value={String(pending.length)}
             sub={pending.length ? `Oldest ${oldestHours < 24 ? `${oldestHours}h` : `${Math.floor(oldestHours / 24)}d`} · ${formatINR(sum(pending, (p) => n(p.total_amount)))}` : "All clear"} />
         </Link>
+        <Tile label="Suspense outstanding" value={formatINR(Math.max(0, suspenseGiven - suspenseSettled))}
+          sub={suspenseOpen ? `${formatINR(suspenseGiven)} given · ${formatINR(suspenseSettled)} settled by bills` : "None"} />
       </section>
 
       <p className="-mt-3 text-sm text-zinc-500">

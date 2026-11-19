@@ -9,13 +9,15 @@ import { loadVoucherOptions } from "@/lib/voucher-options";
 import { VOUCHER_TYPE_LABELS, type VoucherType } from "@/lib/vouchers";
 import { StatusChip } from "@/components/voucher-list";
 import { VoucherHistory } from "@/components/voucher-history";
+import { SettlesLink, SuspensePanel } from "@/components/suspense-panel";
 import { ReviewForm } from "./review-form";
 
 type V = {
   id: string; voucher_no: string; type: VoucherType; status: string; department_id: string; voucher_date: string;
   total_amount: string; head_id: string | null; vendor_name_raw: string | null; vendor_gstin: string | null;
   invoice_number: string | null; payment_mode: string | null; cheque_number: string | null; cheque_date: string | null;
-  cheque_bank: string | null; upi_reference: string | null; float_id: string | null; staff_note: string | null;
+  cheque_bank: string | null; upi_reference: string | null; float_id: string | null;
+  vendor_id: string | null; suspense_id: string | null; staff_note: string | null;
   accounts_note: string | null; taxable_value: string | null; cgst: string | null; sgst: string | null; igst: string | null;
   flags: string[]; created_at: string;
   departments: { name: string } | null; creator: { full_name: string } | null;
@@ -38,10 +40,9 @@ export default async function ReviewVoucherPage(props: PageProps<"/review/[id]">
   const v = data as unknown as V | null;
   if (!v) notFound();
 
-  const [photos, options, { data: vendors }, { data: next }] = await Promise.all([
+  const [photos, options, { data: next }] = await Promise.all([
     signedPhotoUrls(supabase, v.voucher_images),
     loadVoucherOptions(staff),
-    supabase.from("vendors").select("name").eq("active", true).order("name"),
     supabase.from("vouchers").select("id").eq("status", "submitted").neq("id", v.id)
       .order("created_at", { ascending: true }).limit(1),
   ]);
@@ -61,6 +62,9 @@ export default async function ReviewVoucherPage(props: PageProps<"/review/[id]">
         </p>
       </div>
 
+      {v.suspense_id && <SettlesLink suspenseId={v.suspense_id} admin />}
+      {v.type === "suspense_voucher" && <SuspensePanel voucherId={v.id} staff={staff} />}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="flex flex-col gap-2">
           {photos.length === 0 && <p className="text-sm text-zinc-500">No photos.</p>}
@@ -79,11 +83,12 @@ export default async function ReviewVoucherPage(props: PageProps<"/review/[id]">
           heads={options.heads}
           floats={floats}
           floatBalances={balances}
-          vendorNames={(vendors ?? []).map((x) => x.name)}
+          vendors={options.vendors}
+          linked={!!v.suspense_id}
           staffNote={v.staff_note}
           initial={{
             type: v.type, voucherDate: v.voucher_date, amount: s(v.total_amount), headId: v.head_id ?? "",
-            vendorName: v.vendor_name_raw ?? "", vendorGstin: v.vendor_gstin ?? "", invoiceNumber: v.invoice_number ?? "",
+            vendorName: v.vendor_name_raw ?? "", vendorId: v.vendor_id ?? "", vendorGstin: v.vendor_gstin ?? "", invoiceNumber: v.invoice_number ?? "",
             paymentMode: v.payment_mode ?? "", chequeNumber: v.cheque_number ?? "", chequeDate: v.cheque_date ?? "",
             chequeBank: v.cheque_bank ?? "", upiReference: v.upi_reference ?? "", floatId: v.float_id ?? "",
             taxableValue: s(v.taxable_value), cgst: s(v.cgst), sgst: s(v.sgst), igst: s(v.igst),

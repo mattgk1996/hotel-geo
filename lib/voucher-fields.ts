@@ -1,7 +1,7 @@
 import "server-only";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/form";
-import { headDirectionFor, isIsoDate, isPaymentMode, isVoucherType, parseAmount } from "@/lib/vouchers";
+import { headDirectionFor, isIsoDate, isPaymentMode, isVoucherType, parseAmount, usesFloat } from "@/lib/vouchers";
 
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -14,6 +14,10 @@ export type VoucherInput = {
   amount: string;
   headId: string;
   vendorName: string;
+  /** Vendor from the master list ("" = not in list; vendorName is used instead). */
+  vendorId: string;
+  /** Set when this purchase voucher settles (part of) a suspense voucher. */
+  suspenseId?: string;
   invoiceNumber: string;
   paymentMode: string;
   chequeNumber: string;
@@ -37,8 +41,9 @@ export const cleanText = (s: string | undefined, max = 200) => {
  */
 export async function validateVoucherFields(
   supabase: Supabase,
-  input: Omit<VoucherInput, "id" | "departmentId" | "staffNote">,
+  input: Omit<VoucherInput, "id" | "departmentId" | "staffNote" | "suspenseId" | "vendorId"> & { vendorId?: string },
   departmentId: string,
+  opts: { settlesSuspense?: boolean } = {},
 ): Promise<{ ok: true; fields: Record<string, unknown> } | { ok: false; message: string }> {
   if (!isVoucherType(input.type)) return { ok: false, message: "Pick a voucher type." };
   if (!isIsoDate(input.voucherDate)) return { ok: false, message: "Enter a valid date." };
@@ -63,7 +68,7 @@ export async function validateVoucherFields(
   }
 
   let floatId: string | null = null;
-  if (input.type === "petty_cash_expense" && input.floatId) {
+  if (usesFloat(input.type) && input.floatId && !opts.settlesSuspense) {
     const { data: float } = await supabase
       .from("cash_floats")
       .select("id, department_id, active")
@@ -75,6 +80,20 @@ export async function validateVoucherFields(
     floatId = float.id;
   }
 
+  // Vendor from the master list (expense vouchers). Its name is copied for display/search.
+  let vendorId: string | null = null;
+  let vendorName = cleanText(input.vendorName);
+  if (input.vendorId && headDirectionFor(input.type) === "out") {
+    const { data: vendor } = await supabase
+      .from("vendors")
+      .select("id, name, active")
+      .eq("id", UUID_RE.test(input.vendorId) ? input.vendorId : NIL)
+      .maybeSingle();
+    if (!vendor || !vendor.active) return { ok: false, message: "That vendor is not available." };
+    vendorId = vendor.id;
+    vendorName = vendor.name;
+  }
+
   const cheque = paymentMode === "cheque";
   return {
     ok: true,
@@ -83,7 +102,8 @@ export async function validateVoucherFields(
       voucher_date: input.voucherDate,
       total_amount: amount,
       head_id: headId,
-      vendor_name_raw: cleanText(input.vendorName),
+      vendor_name_raw: vendorName,
+      ...(input.vendorId !== undefined ? { vendor_id: vendorId } : {}),
       invoice_number: cleanText(input.invoiceNumber, 60),
       payment_mode: paymentMode,
       cheque_number: cheque ? cleanText(input.chequeNumber, 30) : null,

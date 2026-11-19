@@ -3,11 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FormMessage } from "@/components/pin-input";
-import type { FloatOption, HeadOption } from "@/components/voucher-form";
+import type { FloatOption, HeadOption, VendorOption } from "@/components/voucher-form";
 import { formatINR } from "@/lib/money";
 import { fieldClass, labelClass } from "@/lib/ui";
 import {
-  PAYMENT_MODES, PAYMENT_MODE_LABELS, VOUCHER_TYPES, VOUCHER_TYPE_LABELS, headDirectionFor, parseAmount, type VoucherType,
+  CAPTURE_TYPES, PAYMENT_MODES, PAYMENT_MODE_LABELS, VOUCHER_TYPE_LABELS, headDirectionFor, headRequired, parseAmount, usesFloat,
+  type VoucherType,
 } from "@/lib/vouchers";
 import { reviewVoucher, voidVoucher, type Decision, type ReviewInput } from "../actions";
 
@@ -18,7 +19,7 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 export function ReviewForm({
-  id, status, nextId, heads, floats, floatBalances, vendorNames, staffNote, initial, flags,
+  id, status, nextId, heads, floats, floatBalances, vendors, linked, staffNote, initial, flags,
 }: {
   id: string;
   status: string;
@@ -26,7 +27,8 @@ export function ReviewForm({
   heads: HeadOption[];
   floats: FloatOption[];
   floatBalances: Record<string, number>;
-  vendorNames: string[];
+  vendors: VendorOption[];
+  linked: boolean;
   staffNote: string | null;
   initial: Fields;
   flags: string[];
@@ -47,7 +49,7 @@ export function ReviewForm({
 
   // Warnings (never block): float would go negative, Misc over ₹2,000, taxes don't add up.
   const warnings: string[] = flags.map((x) => FLAG_LABELS[x] ?? x);
-  if (type === "petty_cash_expense" && f.floatId && f.floatId in floatBalances && status === "submitted") {
+  if (usesFloat(type) && !linked && f.floatId && f.floatId in floatBalances && status === "submitted") {
     const after = floatBalances[f.floatId] - amount;
     if (after < 0) warnings.push(`Float goes negative after approval (${formatINR(after)}).`);
   }
@@ -111,13 +113,15 @@ export function ReviewForm({
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Type</span>
-          <select value={f.type} onChange={set("type")} disabled={!reviewable} className={fieldClass}>
-            {VOUCHER_TYPES.map((t) => <option key={t} value={t}>{VOUCHER_TYPE_LABELS[t]}</option>)}
+          <select value={f.type} onChange={set("type")} disabled={!reviewable || linked} className={fieldClass}>
+            {[...new Set<VoucherType>([...CAPTURE_TYPES, initial.type as VoucherType])].map((t) => (
+              <option key={t} value={t}>{VOUCHER_TYPE_LABELS[t]}</option>
+            ))}
           </select>
         </label>
         {input("voucherDate", "Date", { type: "date" })}
         {input("amount", "Total amount (₹)", { inputMode: "decimal", className: `${fieldClass} text-lg tabular-nums` })}
-        <label className="flex flex-col gap-1">
+        {headRequired(type) && <label className="flex flex-col gap-1">
           <span className={labelClass}>Head</span>
           <select value={f.headId} onChange={set("headId")} disabled={!reviewable} className={fieldClass}>
             <option value="">— Pick —</option>
@@ -127,9 +131,25 @@ export function ReviewForm({
               </optgroup>
             ))}
           </select>
-        </label>
-        {input("vendorName", direction === "in" ? "Received from" : "Vendor", { list: "vendor-names" })}
-        <datalist id="vendor-names">{vendorNames.map((n) => <option key={n} value={n} />)}</datalist>
+        </label>}
+        {direction === "out" && type !== "suspense_voucher" && (
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>Vendor (master)</span>
+            <select
+              value={f.vendorId}
+              disabled={!reviewable}
+              onChange={(e) => {
+                const v = vendors.find((x) => x.id === e.target.value);
+                setF((s) => ({ ...s, vendorId: v?.id ?? "", vendorName: v?.name ?? s.vendorName }));
+              }}
+              className={fieldClass}
+            >
+              <option value="">— Not linked —</option>
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          </label>
+        )}
+        {input("vendorName", direction === "in" ? "Received from" : type === "suspense_voucher" ? "Paid to" : "Vendor name on bill")}
         {input("vendorGstin", "Vendor GSTIN", { autoCapitalize: "characters", maxLength: 15 })}
         {input("invoiceNumber", "Invoice no.")}
         <label className="flex flex-col gap-1">
@@ -147,7 +167,7 @@ export function ReviewForm({
             {input("chequeBank", "Bank")}
           </>
         )}
-        {type === "petty_cash_expense" && floats.length > 0 && (
+        {usesFloat(type) && !linked && floats.length > 0 && (
           <label className="flex flex-col gap-1">
             <span className={labelClass}>Float</span>
             <select value={f.floatId} onChange={set("floatId")} disabled={!reviewable} className={fieldClass}>
