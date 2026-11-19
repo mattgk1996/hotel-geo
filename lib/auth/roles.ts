@@ -22,11 +22,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/home", label: "Home", roles: everyone },
   { href: "/vouchers/new", label: "New voucher", roles: everyone },
   { href: "/vouchers", label: "My vouchers", roles: everyone },
-  { href: "/review", label: "Review", roles: reviewers },
+  // Approvals go to the owner only for now; accounts may get them back with role management.
+  { href: "/review", label: "Review", roles: owner },
   { href: "/collections", label: "Collections", roles: reviewers },
   { href: "/vendors", label: "Vendors", roles: reviewers },
   { href: "/dashboard", label: "Dashboard", roles: owner },
-  { href: "/admin/staff", label: "Staff", roles: owner },
+  { href: "/admin", label: "Masters", roles: owner },
 ];
 
 export function navForRole(role: Role): NavItem[] {

@@ -3,33 +3,10 @@
 import { createHash } from "node:crypto";
 import { requireStaff, type CurrentStaff } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  MAX_PAGES,
-  headDirectionFor,
-  isIsoDate,
-  isPaymentMode,
-  isVoucherType,
-  parseAmount,
-  photoRequired,
-} from "@/lib/vouchers";
+import { MAX_PAGES, isVoucherType, photoRequired } from "@/lib/vouchers";
+import { cleanText, validateVoucherFields, type VoucherInput } from "@/lib/voucher-fields";
 
-export type VoucherInput = {
-  id?: string;
-  type: string;
-  departmentId?: string;
-  voucherDate: string;
-  amount: string;
-  headId: string;
-  vendorName: string;
-  invoiceNumber: string;
-  paymentMode: string;
-  chequeNumber: string;
-  chequeDate: string;
-  chequeBank: string;
-  upiReference: string;
-  floatId: string;
-  staffNote: string;
-};
+export type { VoucherInput };
 
 export type ActionResult = { ok: true; id: string } | { ok: false; message: string };
 
@@ -51,71 +28,18 @@ async function editableVoucher(supabase: Supabase, staff: CurrentStaff, id: stri
   return data as { id: string; type: string; status: string; created_by: string; department_id: string };
 }
 
-const text = (s: string | undefined, max = 200) => {
-  const t = (s ?? "").trim().slice(0, max);
-  return t || null;
-};
-
 /** Creates the voucher as a draft, or updates the caller's draft/queried voucher. Never changes status. */
 export async function saveVoucher(input: VoucherInput): Promise<ActionResult> {
   const staff = await requireStaff();
   const supabase = await createSupabaseServerClient();
 
-  if (!isVoucherType(input.type)) return { ok: false, message: "Pick a voucher type." };
-  if (!isIsoDate(input.voucherDate)) return { ok: false, message: "Enter a valid date." };
-  const amount = input.amount.trim() === "" ? 0 : parseAmount(input.amount);
-  if (amount === null) return { ok: false, message: "Amount must be a number like 1250 or 1250.50." };
-  const paymentMode = input.paymentMode ? input.paymentMode : null;
-  if (paymentMode !== null && !isPaymentMode(paymentMode)) return { ok: false, message: "Pick a payment mode." };
-  if (input.chequeDate && !isIsoDate(input.chequeDate)) return { ok: false, message: "Enter a valid cheque date." };
-
-  let headId: string | null = null;
-  if (input.headId) {
-    const { data: head } = await supabase
-      .from("expense_heads")
-      .select("id, direction, active")
-      .eq("id", UUID.test(input.headId) ? input.headId : "00000000-0000-0000-0000-000000000000")
-      .maybeSingle();
-    if (!head || !head.active) return { ok: false, message: "That expense head is not available." };
-    if (head.direction !== headDirectionFor(input.type)) {
-      return { ok: false, message: "That head doesn't fit this voucher type." };
-    }
-    headId = head.id;
-  }
-
   // Staff always file under their own department; accounts/admin may pick one.
   const departmentId = staff.role === "staff" ? staff.departmentId : input.departmentId || staff.departmentId;
   if (!departmentId) return { ok: false, message: "Your account has no department. Ask the admin to set one." };
 
-  let floatId: string | null = null;
-  if (input.type === "petty_cash_expense" && input.floatId) {
-    const { data: float } = await supabase
-      .from("cash_floats")
-      .select("id, department_id, active")
-      .eq("id", UUID.test(input.floatId) ? input.floatId : "00000000-0000-0000-0000-000000000000")
-      .maybeSingle();
-    if (!float || !float.active || float.department_id !== departmentId) {
-      return { ok: false, message: "That cash float is not available." };
-    }
-    floatId = float.id;
-  }
-
-  const cheque = paymentMode === "cheque";
-  const fields = {
-    type: input.type,
-    voucher_date: input.voucherDate,
-    total_amount: amount,
-    head_id: headId,
-    vendor_name_raw: text(input.vendorName),
-    invoice_number: text(input.invoiceNumber, 60),
-    payment_mode: paymentMode,
-    cheque_number: cheque ? text(input.chequeNumber, 30) : null,
-    cheque_date: cheque && input.chequeDate ? input.chequeDate : null,
-    cheque_bank: cheque ? text(input.chequeBank, 80) : null,
-    upi_reference: paymentMode === "upi" ? text(input.upiReference, 60) : null,
-    float_id: floatId,
-    staff_note: text(input.staffNote, 1000),
-  };
+  const checked = await validateVoucherFields(supabase, input, departmentId);
+  if (!checked.ok) return checked;
+  const fields = { ...checked.fields, staff_note: cleanText(input.staffNote, 1000) };
 
   if (input.id) {
     const existing = await editableVoucher(supabase, staff, input.id);

@@ -7,6 +7,8 @@ import { formatINR } from "@/lib/money";
 import { PAYMENT_MODE_LABELS, VOUCHER_TYPE_LABELS, type PaymentMode, type VoucherType } from "@/lib/vouchers";
 import { VoucherForm } from "@/components/voucher-form";
 import { StatusChip } from "@/components/voucher-list";
+import { VoucherHistory } from "@/components/voucher-history";
+import { signedPhotoUrls } from "@/lib/voucher-photos";
 
 type Voucher = {
   id: string;
@@ -49,11 +51,7 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
   const v = data as unknown as Voucher | null;
   if (!v) notFound();
 
-  const images = [...v.voucher_images].sort((a, b) => a.page_no - b.page_no);
-  const { data: signed } = images.length
-    ? await supabase.storage.from("voucher-images").createSignedUrls(images.map((i) => i.storage_path), 600)
-    : { data: [] };
-  const photos = (signed ?? []).map((s) => s.signedUrl).filter((u): u is string => !!u);
+  const photos = await signedPhotoUrls(supabase, v.voucher_images);
 
   const editable = v.created_by === staff.id && (v.status === "draft" || v.status === "queried");
 
@@ -61,6 +59,9 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
     <>
       <div>
         <Link href="/vouchers" className="text-sm text-zinc-500">← My vouchers</Link>
+        {staff.role === "admin" && v.status !== "draft" && (
+          <Link href={`/review/${v.id}`} className="ml-3 text-sm font-medium text-emerald-700">Open in review →</Link>
+        )}
         <h1 className="mt-1 flex flex-wrap items-center gap-2 text-2xl font-semibold">
           {v.voucher_no} <StatusChip status={v.status} />
         </h1>
@@ -123,6 +124,7 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
           )}
         </>
       )}
+      <VoucherHistory voucherId={v.id} />
     </>
   );
 }

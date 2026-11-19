@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+/* Dashboard chart tokens (validated categorical slots 1–2; dark steps chosen for the dark surface). */
+:root {
+  --series-spend: #2a78d6;
+  --series-collections: #eb6834;
+  --chart-grid: #e4e4e7;
+  --chart-ink: #52514e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --series-spend: #3987e5;
+    --series-collections: #d95926;
+    --chart-grid: #27272a;
+    --chart-ink: #c3c2b7;
+  }
+}

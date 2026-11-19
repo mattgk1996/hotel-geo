@@ -10,8 +10,8 @@ describe("role-based navigation", () => {
     expect(hrefs("staff")).toEqual(["/home", "/vouchers/new", "/vouchers"]);
   });
 
-  it("adds review, collections and vendors for accounts", () => {
-    expect(hrefs("accounts")).toEqual(["/home", "/vouchers/new", "/vouchers", "/review", "/collections", "/vendors"]);
+  it("adds collections and vendors for accounts (review is admin-only for now)", () => {
+    expect(hrefs("accounts")).toEqual(["/home", "/vouchers/new", "/vouchers", "/collections", "/vendors"]);
   });
 
   it("gives admin everything", () => {

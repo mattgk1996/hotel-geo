@@ -14,7 +14,8 @@ import {
   photoRequired,
   type VoucherType,
 } from "@/lib/vouchers";
-import { saveVoucher, submitVoucher, uploadVoucherPage, type VoucherInput } from "@/app/(app)/vouchers/actions";
+import { saveVoucher, submitVoucher, uploadVoucherPage } from "@/app/(app)/vouchers/actions";
+import type { VoucherInput } from "@/lib/voucher-fields";
 
 export type HeadOption = { id: string; code: string; name: string; group_name: string; direction: "in" | "out" };
 export type FloatOption = { id: string; name: string; department_id: string };

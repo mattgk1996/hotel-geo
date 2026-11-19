@@ -1,6 +1,6 @@
 # Hotel Geo Vouchers — notes for Claude Code
 
-Spec: `docs/stage-a-spec.md` (Stage A). Build order is spec §11; **milestones 1 (setup), 2 (auth & roles) and 3 (capture) are done**.
+Spec: `docs/stage-a-spec.md` (Stage A). Build order is spec §11; **milestones 1–3 and 5–7 are done; 4 (extraction) is deferred**.
 Next.js-specific agent rules: @AGENTS.md (this is Next.js 16 with Cache Components — read
 `node_modules/next/dist/docs/` before using unfamiliar APIs).
 
@@ -74,6 +74,21 @@ Before committing: `npm run lint && npm run typecheck && npm test && npm run bui
   `submitVoucher` (needs photo unless `collection`, amount > 0, head).
 - Storage objects are `voucher-images/<voucher_id>/p<n>-<sha12>.jpg`; storage RLS (migration 5)
   mirrors voucher access. Photos are shown via 10-minute signed URLs.
+
+## Review, masters, dashboard (milestones 5–7)
+- **Approvals are admin-only for now** (owner's call; role management comes later): `/review` nav and
+  `app/(app)/review/actions.ts` use `requireRole("admin")`. RLS/guard still allow accounts to update
+  vouchers — tighten in the DB when role management is built.
+- Review decisions: approve (submitted→approved), query/reject (note required), save edits, void
+  (approved→void). Head changes insert `head_corrections`; trigger `learn_vendor_head` sets the
+  vendor default after 3. Vendor is linked by exact name or GSTIN match (`lib/gstin.ts` checks checksum).
+- Float balances are kept by triggers (migration 6): approved petty-cash vouchers lower their float,
+  void/edits adjust back, `float_topups` raise it. New floats start at `current_balance = opening`.
+- Dashboard (`/dashboard`, admin): spend = approved `petty_cash_expense` + `purchase_bill`
+  (`lib/dashboard.ts`); collections from `collections`. Live via Realtime (`components/live-refresh.tsx`,
+  `supabase_realtime` publication in migration 6) → `router.refresh()`.
+- Masters live under `/admin` (staff, departments, heads, floats); vendors at `/vendors` (accounts+admin).
+- Shared form bits: `components/action-form.tsx` (useActionState wrapper), `lib/form.ts`, `lib/ui.ts`.
 
 ## Conventions
 - Times are IST (`APP_TIMEZONE=Asia/Kolkata`); store `timestamptz`, compute dates in IST.
