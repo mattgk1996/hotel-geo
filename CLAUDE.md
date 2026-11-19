@@ -4,6 +4,12 @@ Spec: `docs/stage-a-spec.md` (Stage A). Build order is spec §11; **milestones 1
 Next.js-specific agent rules: @AGENTS.md (this is Next.js 16 with Cache Components — read
 `node_modules/next/dist/docs/` before using unfamiliar APIs).
 
+## Working preferences (owner)
+- Commit and push directly to `main`; no feature branches or PRs.
+- Keep usage low: concise replies, no extra verification passes (mock servers, browser runs);
+  lint + typecheck + build is enough unless asked.
+- Don't write new tests unless asked; keep the existing suite passing (`npm test`).
+
 ## Stack
 - Next.js 16 (App Router, `cacheComponents: true`), TypeScript, Tailwind v4 — mobile-first.
 - Supabase: Postgres + RLS, private Storage bucket `voucher-images`, Auth (PIN login).
