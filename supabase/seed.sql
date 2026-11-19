@@ -58,7 +58,7 @@ on conflict (code) do nothing;
 -- ---------------------------------------------------------------------------
 insert into public.staff (username, full_name, role, department_id, auth_user_id)
 select 'admin',
-       'Owner',
+       'Matthew',
        'admin',
        (select id from public.departments where name = 'Accounts'),
        (select id from auth.users where email = 'admin@staff.hotelgeo.app')
