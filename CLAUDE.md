@@ -1,6 +1,6 @@
 # Hotel Geo Vouchers — notes for Claude Code
 
-Spec: `docs/stage-a-spec.md` (Stage A). Build order is spec §11; **milestones 1 (setup) and 2 (auth & roles) are done**.
+Spec: `docs/stage-a-spec.md` (Stage A). Build order is spec §11; **milestones 1 (setup), 2 (auth & roles) and 3 (capture) are done**.
 Next.js-specific agent rules: @AGENTS.md (this is Next.js 16 with Cache Components — read
 `node_modules/next/dist/docs/` before using unfamiliar APIs).
 
@@ -65,6 +65,15 @@ Before committing: `npm run lint && npm run typecheck && npm test && npm run bui
   `createSupabaseAdminClient()` = service role, only for auth admin calls and lockout counters.
 - Cache Components: session reads must sit under a `<Suspense>` (the `(app)` layout has one).
   `createSupabaseServerClient()` calls `connection()` first so it never runs during prerendering.
+
+## Capture (milestone 3)
+- `components/voucher-form.tsx` (client): type, photos (camera/gallery, retake, max 4), and manual
+  fields incl. expense head. Photos are compressed in the browser (`lib/compress-image.ts`, ~1600px JPEG).
+- Actions in `app/(app)/vouchers/actions.ts`: `saveVoucher` (create draft / update own draft or
+  queried), `uploadVoucherPage` (one page per call; `serverActions.bodySizeLimit` is 2mb),
+  `submitVoucher` (needs photo unless `collection`, amount > 0, head).
+- Storage objects are `voucher-images/<voucher_id>/p<n>-<sha12>.jpg`; storage RLS (migration 5)
+  mirrors voucher access. Photos are shown via 10-minute signed URLs.
 
 ## Conventions
 - Times are IST (`APP_TIMEZONE=Asia/Kolkata`); store `timestamptz`, compute dates in IST.

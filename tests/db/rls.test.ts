@@ -284,6 +284,32 @@ describe("admin", () => {
   });
 });
 
+describe("voucher photo storage", () => {
+  const put = (path: string) =>
+    rows("insert into storage.objects (bucket_id, name) values ('voucher-images', $1) returning name", [path]);
+  const visible = () => rows<{ name: string }>("select name from storage.objects order by name");
+
+  let draftId: string;
+
+  it("lets staff upload to their own draft, not to others' or submitted vouchers", async () => {
+    const [draft] = await as("store", () => rows<{ id: string }>(insertVoucherSql, ["draft", "Store", users.store.staffId]));
+    const [submitted] = await as("store", () =>
+      rows<{ id: string }>(insertVoucherSql, ["submitted", "Store", users.store.staffId]),
+    );
+    draftId = draft.id;
+    await as("store", () => put(`${draftId}/p1.jpg`));
+    await expect(as("store", () => put(`${submitted.id}/p1.jpg`))).rejects.toThrow(/row-level security/);
+    await expect(as("front", () => put(`${draftId}/p2.jpg`))).rejects.toThrow(/row-level security/);
+    await expect(as("store", () => put("not-a-voucher/p1.jpg"))).rejects.toThrow(/row-level security/);
+  });
+
+  it("shows photos only to those who can see the voucher", async () => {
+    expect(await as("store", visible)).toEqual([{ name: `${draftId}/p1.jpg` }]);
+    expect(await as("front", visible)).toEqual([]);
+    expect(await as("accounts", visible)).toEqual([{ name: `${draftId}/p1.jpg` }]);
+  });
+});
+
 describe("PIN lockout functions (service role)", () => {
   it("locks for 15 minutes on the 5th wrong PIN, then resets", async () => {
     const id = users.front.staffId;
