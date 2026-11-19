@@ -1,0 +1,15 @@
+# Next.js / Node
+node_modules/
+.next/
+out/
+build/
+
+# Secrets: never commit (this repo is public)
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+*.log
+.vercel
