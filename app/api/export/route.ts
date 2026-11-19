@@ -13,11 +13,10 @@ type VRow = {
   cgst: string | null; sgst: string | null; igst: string | null; total_amount: string; flags: string[];
   staff_note: string | null; accounts_note: string | null; reviewed_at: string | null; created_at: string;
   departments: { name: string } | null; creator: { full_name: string } | null; reviewer: { full_name: string } | null;
-  vendors: { name: string } | null; expense_heads: { code: string; name: string } | null; cash_floats: { name: string } | null;
+  vendors: { name: string } | null; expense_heads: { code: string; name: string } | null; 
   suspense: { voucher_no: string } | null; voucher_images: { count: number }[];
 };
 type CRow = { date: string; cash: string; card: string; upi: string; other: string; note: string | null; created_at: string; departments: { name: string } | null; enterer: { full_name: string } | null };
-type TRow = { date: string; amount: string; note: string | null; cash_floats: { name: string } | null; giver: { full_name: string } | null };
 
 const MONEY = "#,##,##0.00";
 const num = (x: string | null | undefined) => (x === null || x === undefined ? null : Number(x));
@@ -47,22 +46,19 @@ export async function GET(request: Request) {
   if (from > to) return new Response("'from' must be on or before 'to'", { status: 400 });
 
   const supabase = await createSupabaseServerClient();
-  const [vouchers, collections, topups] = await Promise.all([
+  const [vouchers, collections] = await Promise.all([
     fetchAll<VRow>((a, b) => supabase.from("vouchers")
       .select(`voucher_no, voucher_date, type, status, vendor_name_raw, vendor_gstin, invoice_number, payment_mode,
         cheque_number, cheque_date, cheque_bank, upi_reference, taxable_value, cgst, sgst, igst, total_amount, flags,
         staff_note, accounts_note, reviewed_at, created_at, departments(name),
         creator:staff!vouchers_created_by_fkey(full_name), reviewer:staff!vouchers_reviewed_by_fkey(full_name),
-        vendors(name), expense_heads(code, name), cash_floats(name),
+        vendors(name), expense_heads(code, name),
         suspense:vouchers!vouchers_suspense_id_fkey(voucher_no), voucher_images(count)`)
       .gte("voucher_date", from).lte("voucher_date", to).order("voucher_date").order("voucher_no").range(a, b)
       .overrideTypes<VRow[], { merge: false }>()),
     fetchAll<CRow>((a, b) => supabase.from("collections")
       .select("date, cash, card, upi, other, note, created_at, departments(name), enterer:staff!collections_entered_by_fkey(full_name)")
       .gte("date", from).lte("date", to).order("date").order("id").range(a, b).overrideTypes<CRow[], { merge: false }>()),
-    fetchAll<TRow>((a, b) => supabase.from("float_topups")
-      .select("date, amount, note, cash_floats(name), giver:staff!float_topups_given_by_fkey(full_name)")
-      .gte("date", from).lte("date", to).order("date").order("id").range(a, b).overrideTypes<TRow[], { merge: false }>()),
   ]);
 
   const wb = new ExcelJS.Workbook();
@@ -79,7 +75,7 @@ export async function GET(request: Request) {
     { header: "Cheque date", key: "chequeDate", date: true, width: 12 }, { header: "Bank", key: "bank" },
     { header: "UPI ref", key: "upi" }, { header: "Taxable value", key: "taxable", money: true },
     { header: "CGST", key: "cgst", money: true }, { header: "SGST", key: "sgst", money: true }, { header: "IGST", key: "igst", money: true },
-    { header: "Total", key: "total", money: true }, { header: "Cash float", key: "float" },
+    { header: "Total", key: "total", money: true },
     { header: "Settles suspense", key: "suspense", width: 16 }, { header: "Flags", key: "flags", width: 18 },
     { header: "Photos", key: "photos", width: 8 }, { header: "Staff note", key: "staffNote", width: 30 },
     { header: "Accounts note", key: "accountsNote", width: 30 }, { header: "Reviewed by", key: "reviewer", width: 16 },
@@ -90,7 +86,7 @@ export async function GET(request: Request) {
     gstin: v.vendor_gstin, invoice: v.invoice_number, headCode: v.expense_heads?.code, head: v.expense_heads?.name,
     mode: v.payment_mode ? PAYMENT_MODE_LABELS[v.payment_mode] : null, chequeNo: v.cheque_number, chequeDate: day(v.cheque_date),
     bank: v.cheque_bank, upi: v.upi_reference, taxable: num(v.taxable_value), cgst: num(v.cgst), sgst: num(v.sgst), igst: num(v.igst),
-    total: num(v.total_amount), float: v.cash_floats?.name, suspense: v.suspense?.voucher_no, flags: v.flags.join(", "),
+    total: num(v.total_amount), suspense: v.suspense?.voucher_no, flags: v.flags.join(", "),
     photos: v.voucher_images[0]?.count ?? 0, staffNote: v.staff_note, accountsNote: v.accounts_note,
     reviewer: v.reviewer?.full_name, reviewedAt: stamp(v.reviewed_at), createdAt: stamp(v.created_at),
   })));
@@ -105,11 +101,6 @@ export async function GET(request: Request) {
     date: day(c.date), dept: c.departments?.name, cash: num(c.cash), card: num(c.card), upi: num(c.upi), other: num(c.other),
     total: Number(c.cash) + Number(c.card) + Number(c.upi) + Number(c.other), note: c.note, by: c.enterer?.full_name, at: stamp(c.created_at),
   })));
-
-  sheet(wb, "Float top-ups", [
-    { header: "Date", key: "date", date: true, width: 12 }, { header: "Float", key: "float", width: 20 },
-    { header: "Amount", key: "amount", money: true }, { header: "Given by", key: "by", width: 16 }, { header: "Note", key: "note", width: 30 },
-  ], topups.map((t) => ({ date: day(t.date), float: t.cash_floats?.name, amount: num(t.amount), by: t.giver?.full_name, note: t.note })));
 
   const buf = await wb.xlsx.writeBuffer();
   return new Response(buf, {

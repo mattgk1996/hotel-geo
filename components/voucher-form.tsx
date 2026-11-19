@@ -14,14 +14,12 @@ import {
   headDirectionFor,
   headRequired,
   photoRequired,
-  usesFloat,
   type VoucherType,
 } from "@/lib/vouchers";
 import { saveVoucher, submitVoucher, uploadVoucherPage } from "@/app/(app)/vouchers/actions";
 import type { VoucherInput } from "@/lib/voucher-fields";
 
 export type HeadOption = { id: string; code: string; name: string; group_name: string; direction: "in" | "out" };
-export type FloatOption = { id: string; name: string; department_id: string };
 export type DeptOption = { id: string; name: string };
 export type VendorOption = { id: string; name: string; default_head_id: string | null };
 /** The suspense voucher a new purchase voucher settles. */
@@ -38,7 +36,6 @@ export function VoucherForm({
   initial,
   existingPhotos = [],
   heads,
-  floats,
   departments,
   vendors,
   suspense,
@@ -48,7 +45,6 @@ export function VoucherForm({
   initial: Fields;
   existingPhotos?: string[];
   heads: HeadOption[];
-  floats: FloatOption[];
   /** Shown only to accounts/admin, who may file for any department. */
   departments?: DeptOption[];
   vendors: VendorOption[];
@@ -79,8 +75,6 @@ export function VoucherForm({
   const direction = headDirectionFor(type);
   const fittingHeads = heads.filter((h) => h.direction === direction);
   const groups = [...new Set(fittingHeads.map((h) => h.group_name))];
-  const deptId = f.departmentId;
-  const fittingFloats = floats.filter((fl) => !deptId || fl.department_id === deptId);
   const totalPages = existingPhotos.length + pages.length;
   const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -96,7 +90,6 @@ export function VoucherForm({
         type: next,
         headId: keepHead ? s.headId : "",
         vendorId: keepVendor ? s.vendorId : "",
-        floatId: usesFloat(next) ? s.floatId : "",
       };
     });
   }
@@ -369,17 +362,6 @@ export function VoucherForm({
             <select value={f.departmentId} onChange={set("departmentId")} disabled={!!id} className={field}>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {usesFloat(type) && !linked && fittingFloats.length > 0 && (
-          <label className="flex flex-col gap-1">
-            <span className={label}>Paid from float</span>
-            <select value={f.floatId} onChange={set("floatId")} className={field}>
-              <option value="">—</option>
-              {fittingFloats.map((fl) => (
-                <option key={fl.id} value={fl.id}>{fl.name}</option>
               ))}
             </select>
           </label>

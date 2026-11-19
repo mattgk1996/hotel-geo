@@ -37,7 +37,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const supabase = await createSupabaseServerClient();
   const { data: misc } = await supabase.from("expense_heads").select("id").eq("code", "MISC").maybeSingle();
 
-  const [spendAll, collAll, suspenseRows, pendingQ, floatsQ, flaggedQ, miscQ, recentQ] = await Promise.all([
+  const [spendAll, collAll, suspenseRows, pendingQ, flaggedQ, miscQ, recentQ] = await Promise.all([
     fetchAll<Spend>((a, b) => supabase.from("vouchers")
       .select("voucher_date, total_amount, payment_mode, vendor_name_raw, vendors(name), expense_heads(name), departments(name)")
       .eq("status", "approved").in("type", SPEND_TYPES).gte("voucher_date", fetchFrom).lte("voucher_date", fetchTo)
@@ -50,7 +50,6 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       .or("type.eq.suspense_voucher,suspense_id.not.is.null").order("id").range(a, b)),
     supabase.from("vouchers").select("created_at, total_amount, voucher_date, type").eq("status", "submitted")
       .order("created_at", { ascending: true }).limit(5000),
-    supabase.from("cash_floats").select("id, name, current_balance, low_balance_threshold").eq("active", true).order("name"),
     supabase.from("vouchers").select("id, voucher_no, total_amount, flags, vendor_name_raw, status")
       .overlaps("flags", ["duplicate_suspect", "amount_mismatch"]).in("status", ["submitted", "approved", "queried"])
       .order("created_at", { ascending: false }).limit(20).overrideTypes<Flagged[], { merge: false }>(),
@@ -90,7 +89,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <div className="flex items-center gap-3">
-          <LiveRefresh tables={["vouchers", "collections", "cash_floats"]} />
+          <LiveRefresh tables={["vouchers", "collections"]} />
           <a href={`/api/export?from=${range.from}&to=${range.to}`} className="rounded-xl border border-zinc-300 px-3 py-1.5 text-sm font-medium dark:border-zinc-700">
             ⬇ Export to Excel
           </a>
@@ -150,24 +149,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
         <TrendChart days={trendDays} spend={trendDays.map((d) => spendByDay.get(d) ?? 0)} collections={trendDays.map((d) => collByDay.get(d) ?? 0)} />
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Cash floats">
-          {!floatsQ.data?.length ? <p className="text-sm text-zinc-500">No floats set up.</p> : (
-            <ul className="flex flex-col gap-2 text-sm">
-              {floatsQ.data.map((f) => {
-                const low = n(f.current_balance) < n(f.low_balance_threshold) || n(f.current_balance) < 0;
-                return (
-                  <li key={f.id} className="flex justify-between gap-3">
-                    <span>{f.name}</span>
-                    <span className={`tabular-nums ${low ? "font-semibold text-red-700 dark:text-red-400" : ""}`}>
-                      {low && "⚠ Low · "}{formatINR(f.current_balance)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+      <div>
         <Card title="Flags">
           {!flagged.length ? <p className="text-sm text-zinc-500">✓ No duplicates, mismatches or large Misc entries.</p> : (
             <ul className="flex flex-col gap-2 text-sm">

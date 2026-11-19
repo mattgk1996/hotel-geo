@@ -12,7 +12,7 @@ export default async function NewVoucherPage(props: PageProps<"/vouchers/new">) 
   const sp = await props.searchParams;
   const suspenseParam = typeof sp.suspense === "string" && UUID_RE.test(sp.suspense) ? sp.suspense : null;
 
-  const { heads, floats, departments, vendors } = await loadVoucherOptions(staff);
+  const { heads, departments, vendors } = await loadVoucherOptions(staff);
 
   // "Add purchase voucher" from a suspense voucher: the new purchase settles it.
   let suspense: SuspenseContext | undefined;
@@ -35,7 +35,6 @@ export default async function NewVoucherPage(props: PageProps<"/vouchers/new">) 
   }
 
   const departmentId = suspenseDept ?? staff.departmentId ?? departments?.[0]?.id ?? "";
-  const deptFloats = floats.filter((f) => f.department_id === departmentId);
 
   return (
     <>
@@ -45,7 +44,6 @@ export default async function NewVoucherPage(props: PageProps<"/vouchers/new">) 
       ) : (
         <VoucherForm
           heads={heads}
-          floats={floats}
           departments={departments}
           vendors={vendors}
           suspense={suspense}
@@ -64,7 +62,6 @@ export default async function NewVoucherPage(props: PageProps<"/vouchers/new">) 
             chequeDate: "",
             chequeBank: "",
             upiReference: "",
-            floatId: !suspense && deptFloats.length === 1 ? deptFloats[0].id : "",
             staffNote: "",
           }}
         />

@@ -12,7 +12,7 @@ type Entry = {
 const HIDDEN = new Set(["status", "reviewed_by", "reviewed_at", "accounts_note", "staff_note", "flags"]);
 const FIELD_LABELS: Record<string, string> = {
   total_amount: "amount", voucher_date: "date", head_id: "head", vendor_name_raw: "vendor", vendor_id: "vendor",
-  payment_mode: "payment mode", invoice_number: "invoice no.", float_id: "float", type: "type",
+  payment_mode: "payment mode", invoice_number: "invoice no.", type: "type",
 };
 
 const when = new Intl.DateTimeFormat("en-IN", {

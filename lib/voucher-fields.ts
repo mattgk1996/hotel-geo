@@ -1,7 +1,7 @@
 import "server-only";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/form";
-import { headDirectionFor, isIsoDate, isPaymentMode, isVoucherType, parseAmount, usesFloat } from "@/lib/vouchers";
+import { headDirectionFor, isIsoDate, isPaymentMode, isVoucherType, parseAmount } from "@/lib/vouchers";
 
 type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -24,7 +24,6 @@ export type VoucherInput = {
   chequeDate: string;
   chequeBank: string;
   upiReference: string;
-  floatId: string;
   staffNote: string;
 };
 
@@ -37,13 +36,10 @@ export const cleanText = (s: string | undefined, max = 200) => {
 
 /**
  * Validates the shared voucher fields and returns the matching `vouchers` columns.
- * `departmentId` is the department the voucher belongs to (used to check the cash float).
  */
 export async function validateVoucherFields(
   supabase: Supabase,
   input: Omit<VoucherInput, "id" | "departmentId" | "staffNote" | "suspenseId" | "vendorId"> & { vendorId?: string },
-  departmentId: string,
-  opts: { settlesSuspense?: boolean } = {},
 ): Promise<{ ok: true; fields: Record<string, unknown> } | { ok: false; message: string }> {
   if (!isVoucherType(input.type)) return { ok: false, message: "Pick a voucher type." };
   if (!isIsoDate(input.voucherDate)) return { ok: false, message: "Enter a valid date." };
@@ -65,19 +61,6 @@ export async function validateVoucherFields(
       return { ok: false, message: "That head doesn't fit this voucher type." };
     }
     headId = head.id;
-  }
-
-  let floatId: string | null = null;
-  if (usesFloat(input.type) && input.floatId && !opts.settlesSuspense) {
-    const { data: float } = await supabase
-      .from("cash_floats")
-      .select("id, department_id, active")
-      .eq("id", UUID_RE.test(input.floatId) ? input.floatId : NIL)
-      .maybeSingle();
-    if (!float || !float.active || float.department_id !== departmentId) {
-      return { ok: false, message: "That cash float is not available for this department." };
-    }
-    floatId = float.id;
   }
 
   // Vendor from the master list (expense vouchers). Its name is copied for display/search.
@@ -110,7 +93,6 @@ export async function validateVoucherFields(
       cheque_date: cheque && input.chequeDate ? input.chequeDate : null,
       cheque_bank: cheque ? cleanText(input.chequeBank, 80) : null,
       upi_reference: paymentMode === "upi" ? cleanText(input.upiReference, 60) : null,
-      float_id: floatId,
     },
   };
 }

@@ -3,11 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FormMessage } from "@/components/pin-input";
-import type { FloatOption, HeadOption, VendorOption } from "@/components/voucher-form";
-import { formatINR } from "@/lib/money";
+import type { HeadOption, VendorOption } from "@/components/voucher-form";
 import { fieldClass, labelClass } from "@/lib/ui";
 import {
-  CAPTURE_TYPES, PAYMENT_MODES, PAYMENT_MODE_LABELS, VOUCHER_TYPE_LABELS, headDirectionFor, headRequired, parseAmount, usesFloat,
+  CAPTURE_TYPES, PAYMENT_MODES, PAYMENT_MODE_LABELS, VOUCHER_TYPE_LABELS, headDirectionFor, headRequired, parseAmount,
   type VoucherType,
 } from "@/lib/vouchers";
 import { reviewVoucher, voidVoucher, type Decision, type ReviewInput } from "../actions";
@@ -19,14 +18,12 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 export function ReviewForm({
-  id, status, nextId, heads, floats, floatBalances, vendors, linked, staffNote, initial, flags,
+  id, status, nextId, heads, vendors, linked, staffNote, initial, flags,
 }: {
   id: string;
   status: string;
   nextId: string | null;
   heads: HeadOption[];
-  floats: FloatOption[];
-  floatBalances: Record<string, number>;
   vendors: VendorOption[];
   linked: boolean;
   staffNote: string | null;
@@ -47,12 +44,8 @@ export function ReviewForm({
   const head = heads.find((h) => h.id === f.headId);
   const reviewable = status === "submitted" || status === "queried";
 
-  // Warnings (never block): float would go negative, Misc over ₹2,000, taxes don't add up.
+  // Warnings (never block): Misc over ₹2,000, taxes don't add up.
   const warnings: string[] = flags.map((x) => FLAG_LABELS[x] ?? x);
-  if (usesFloat(type) && !linked && f.floatId && f.floatId in floatBalances && status === "submitted") {
-    const after = floatBalances[f.floatId] - amount;
-    if (after < 0) warnings.push(`Float goes negative after approval (${formatINR(after)}).`);
-  }
   if (head?.code === "MISC" && amount > 2000) warnings.push("Miscellaneous over ₹2,000 — is there a better head?");
   const taxParts = [f.taxableValue, f.cgst, f.sgst, f.igst].map((x) => parseAmount(x) ?? 0);
   if (f.taxableValue && Math.abs(taxParts.reduce((a, b) => a + b, 0) - amount) > 1) {
@@ -166,17 +159,6 @@ export function ReviewForm({
             {input("chequeDate", "Cheque date", { type: "date" })}
             {input("chequeBank", "Bank")}
           </>
-        )}
-        {usesFloat(type) && !linked && floats.length > 0 && (
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>Float</span>
-            <select value={f.floatId} onChange={set("floatId")} disabled={!reviewable} className={fieldClass}>
-              <option value="">—</option>
-              {floats.map((fl) => (
-                <option key={fl.id} value={fl.id}>{fl.name} ({formatINR(floatBalances[fl.id])})</option>
-              ))}
-            </select>
-          </label>
         )}
       </div>
 

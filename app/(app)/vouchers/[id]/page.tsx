@@ -28,7 +28,6 @@ type Voucher = {
   cheque_date: string | null;
   cheque_bank: string | null;
   upi_reference: string | null;
-  float_id: string | null;
   vendor_id: string | null;
   suspense_id: string | null;
   staff_note: string | null;
@@ -101,7 +100,6 @@ export default async function VoucherPage(props: PageProps<"/vouchers/[id]">) {
             chequeDate: v.cheque_date ?? "",
             chequeBank: v.cheque_bank ?? "",
             upiReference: v.upi_reference ?? "",
-            floatId: v.float_id ?? "",
             staffNote: v.staff_note ?? "",
           }}
         />

@@ -5,7 +5,6 @@ const LINKS = [
   { href: "/admin/staff", title: "Staff", text: "Add staff, reset PINs, deactivate." },
   { href: "/admin/departments", title: "Departments", text: "Add or rename departments." },
   { href: "/admin/heads", title: "Expense heads", text: "Codes, names, groups and keyword hints." },
-  { href: "/admin/floats", title: "Cash floats", text: "Petty cash floats, balances and top-ups." },
   { href: "/vendors", title: "Vendors", text: "GSTINs and default heads." },
 ];
 

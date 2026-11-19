@@ -56,7 +56,7 @@ export async function reviewVoucher(input: ReviewInput, decision: Decision): Pro
   if (v.suspense_id && input.type !== "purchase_bill") {
     return { ok: false, message: "A voucher settling a suspense voucher must stay a purchase voucher." };
   }
-  const checked = await validateVoucherFields(supabase, input, v.department_id, { settlesSuspense: !!v.suspense_id });
+  const checked = await validateVoucherFields(supabase, input);
   if (!checked.ok) return checked;
   if (decision === "approve" && !(Number(checked.fields.total_amount) > 0)) {
     return { ok: false, message: "Amount must be more than zero to approve." };
@@ -114,7 +114,7 @@ export async function reviewVoucher(input: ReviewInput, decision: Decision): Pro
   return { ok: true, message: done };
 }
 
-/** Admin only: void an approved voucher (soft; its float amount is restored). */
+/** Admin only: void an approved voucher (soft). */
 export async function voidVoucher(id: string, reason: string): Promise<ReviewResult> {
   const me = await requireRole("admin");
   const supabase = await createSupabaseServerClient();

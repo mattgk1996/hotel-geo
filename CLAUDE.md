@@ -82,12 +82,12 @@ Before committing: `npm run lint && npm run typecheck && npm test && npm run bui
 - Review decisions: approve (submitted→approved), query/reject (note required), save edits, void
   (approved→void). Head changes insert `head_corrections`; trigger `learn_vendor_head` sets the
   vendor default after 3. Vendor is linked by exact name or GSTIN match (`lib/gstin.ts` checks checksum).
-- Float balances are kept by triggers (migration 6): approved petty-cash vouchers lower their float,
-  void/edits adjust back, `float_topups` raise it. New floats start at `current_balance = opening`.
+- Cash floats were removed at the owner's request (migration 9 drops `cash_floats`, `float_topups`,
+  `vouchers.float_id` and the balance triggers). Don't reintroduce them.
 - Dashboard (`/dashboard`, admin): spend = approved `petty_cash_expense` + `purchase_bill`
   (`lib/dashboard.ts`); collections from `collections`. Live via Realtime (`components/live-refresh.tsx`,
   `supabase_realtime` publication in migration 6) → `router.refresh()`.
-- Masters live under `/admin` (staff, departments, heads, floats); vendors at `/vendors` (accounts+admin).
+- Masters live under `/admin` (staff, departments, heads); vendors at `/vendors` (accounts+admin).
 - Shared form bits: `components/action-form.tsx` (useActionState wrapper), `lib/form.ts`, `lib/ui.ts`.
 
 ## Voucher types (owner update, Nov 2026)
@@ -97,9 +97,8 @@ Before committing: `npm run lint && npm run typecheck && npm test && npm run bui
   default head pre-fills the head.
 - Suspense vouchers need no photo or head. They're settled by purchase vouchers with `suspense_id`
   pointing back (`/vouchers/new?suspense=<id>`, `lib/suspense.ts`, `components/suspense-panel.tsx`).
-  Only the suspense voucher touches a cash float; settling purchases never do (migration 8).
 - Dashboard spend = approved purchase (+ legacy petty cash); unsettled suspense shows separately.
-- Excel export: `GET /api/export?from&to` (admin, exceljs) — Vouchers, Collections, Float top-ups sheets.
+- Excel export: `GET /api/export?from&to` (admin, exceljs) — Vouchers and Collections sheets.
 - Supabase caps responses at 1000 rows: use `fetchAll` (`lib/supabase/fetch-all.ts`) for bulk reads.
 
 ## Conventions

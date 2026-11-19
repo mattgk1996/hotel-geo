@@ -80,10 +80,6 @@ export function headRequired(type: VoucherType): boolean {
   return type !== "suspense_voucher";
 }
 
-/** Money-out types that can be paid from a cash float. */
-export function usesFloat(type: VoucherType): boolean {
-  return type === "purchase_bill" || type === "suspense_voucher" || type === "petty_cash_expense";
-}
 
 /** Parses a rupee amount typed by staff ("1,250.5" → 1250.5). Null if not a valid amount. */
 export function parseAmount(raw: string): number | null {

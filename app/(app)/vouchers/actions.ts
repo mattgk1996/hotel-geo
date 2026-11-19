@@ -40,7 +40,7 @@ export async function saveVoucher(input: VoucherInput): Promise<ActionResult> {
     if (existing.suspense_id && input.type !== "purchase_bill") {
       return { ok: false, message: "A voucher settling a suspense voucher must stay a purchase voucher." };
     }
-    const checked = await validateVoucherFields(supabase, input, existing.department_id, { settlesSuspense: !!existing.suspense_id });
+    const checked = await validateVoucherFields(supabase, input);
     if (!checked.ok) return checked;
     const { error } = await supabase
       .from("vouchers")
@@ -65,7 +65,7 @@ export async function saveVoucher(input: VoucherInput): Promise<ActionResult> {
     ?? (staff.role === "staff" ? staff.departmentId : input.departmentId || staff.departmentId);
   if (!departmentId) return { ok: false, message: "Your account has no department. Ask the admin to set one." };
 
-  const checked = await validateVoucherFields(supabase, input, departmentId, { settlesSuspense: !!suspense });
+  const checked = await validateVoucherFields(supabase, input);
   if (!checked.ok) return checked;
 
   const { data, error } = await supabase
