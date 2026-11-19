@@ -73,7 +73,7 @@ export async function saveVoucher(input: VoucherInput): Promise<ActionResult> {
     .insert({
       ...checked.fields,
       staff_note: cleanText(input.staffNote, 1000),
-      suspense_id: suspense?.id ?? null,
+      ...(suspense ? { suspense_id: suspense.id } : {}),
       status: "draft",
       department_id: departmentId,
       created_by: staff.id,
