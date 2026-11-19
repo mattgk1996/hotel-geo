@@ -1,6 +1,6 @@
--- Suspense vouchers are settled by one or more purchase vouchers that point back to them.
-alter table public.vouchers add column suspense_id uuid references public.vouchers (id);
-create index vouchers_suspense_idx on public.vouchers (suspense_id) where suspense_id is not null;
+-- Idempotent (safe to re-run). Suspense vouchers are settled by one or more purchase vouchers that point back to them.
+alter table public.vouchers add column if not exists suspense_id uuid references public.vouchers (id);
+create index if not exists vouchers_suspense_idx on public.vouchers (suspense_id) where suspense_id is not null;
 
 -- Float balance now follows every approved money-out voucher paid from a float (purchase,
 -- suspense, legacy petty cash). Purchases that settle a suspense voucher never touch a float:
@@ -22,7 +22,7 @@ begin
 end;
 $$;
 
-drop trigger vouchers_float_balance on public.vouchers;
+drop trigger if exists vouchers_float_balance on public.vouchers;
 create trigger vouchers_float_balance
   after insert or update of status, type, float_id, total_amount, suspense_id on public.vouchers
   for each row execute function public.apply_float_balance();
