@@ -34,7 +34,9 @@ export function pinCheckDeps(verify: Verify): PinCheckDeps & { admin: SupabaseCl
 export async function findStaffForLogin(admin: SupabaseClient, by: { username?: string; id?: string }) {
   let q = admin.from("staff").select("id, username, auth_user_id, active, locked_until, pin_derived");
   q = by.id ? q.eq("id", by.id) : q.eq("username", by.username ?? "");
-  const { data } = await q.maybeSingle();
+  const { data, error } = await q.maybeSingle();
+  // A failed lookup (missing migration, wrong service key) must not look like a wrong PIN.
+  if (error) throw new Error(`staff lookup failed: ${error.message}`);
   if (!data) return null;
   return {
     id: data.id,

@@ -21,7 +21,10 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     const result = await attemptPinLogin(
       loginDeps(async (email, password) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        return !error;
+        if (!error) return true;
+        if (error.code === "invalid_credentials") return false;
+        throw new Error(`Supabase Auth: ${error.message}`); // e.g. email not confirmed, bad API key
+
       }),
       username,
       pin,
@@ -30,7 +33,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { ok: true, username: result.staff.username };
   } catch (err) {
     console.error("login failed", err);
-    return { ok: false, error: "Something went wrong. Please try again." };
+    const reason = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Login problem (not your PIN): ${reason}` };
   }
 }
 
