@@ -13,3 +13,9 @@ build/
 .DS_Store
 *.log
 .vercel
+
+# Testing / TypeScript
+/coverage
+*.tsbuildinfo
+next-env.d.ts
+*.pem
